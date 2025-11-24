@@ -34,7 +34,7 @@ def get_video_ids(playlistId):
 
         base_url = f'https://youtube.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults={max_results}&playlistId={playlistId}&key={api_key}'
         page_token = None
-        video_list = []
+        video_ids = []
 
         while True:
             
@@ -46,22 +46,62 @@ def get_video_ids(playlistId):
 
             data = response.json()
 
-            for item in data["items"]:
-                video_list.append(item["contentDetails"]["videoId"])
+            for item in data.get("items", []):
+                video_ids.append(item["contentDetails"]["videoId"])
             
             if "nextPageToken" in data:
                 page_token = data["nextPageToken"]
             else:
                 break
         
-        return video_list            
+        return video_ids            
         
+    except requests.exceptions.RequestException as e:
+        raise e
+
+def get_video_stats(video_id_lst):
+
+    def batch_list(video_id_lst, batch_size):
+        for video_id in range(0, len(video_id_lst), batch_size):
+            yield video_id_lst[video_id : video_id + batch_size]
+
+    extracted_data = []
+
+    try:
+        
+        for batch in batch_list(video_id_lst, max_results):
+            videos_str = ','.join(batch)
+            url = f'https://youtube.googleapis.com/youtube/v3/videos?part=contentDetails&part=snippet&part=statistics&id={videos_str}&key={api_key}'
+
+            response = requests.get(url)
+            response.raise_for_status()
+
+            data = response.json()
+
+            for item in data.get('items', []):
+                videoId = item['id']
+                snippet = item['snippet']
+                contentDetails = item['contentDetails']
+                statistics = item['statistics']
+
+                video_data = {
+                    'video_id': videoId,
+                    'title': snippet['title'],
+                    'published_at': snippet['publishedAt'],
+                    'duration': contentDetails['duration'],
+                    'view_count': statistics.get('viewCount', None),
+                    'likes_count': statistics.get('likeCount', None),
+                    'comments_count': statistics.get('commentCount', None)
+                }
+
+                extracted_data.append(video_data)
+    
+        return extracted_data
+
     except requests.exceptions.RequestException as e:
         raise e
 
 if __name__ == '__main__':
     playlist = get_playlist_id()
-    print(playlist)
-    videos = get_video_ids(playlist)
-    print(videos)
-    print(len(videos))
+    videos_lst = get_video_ids(playlist)
+    print(get_video_stats(videos_lst))
